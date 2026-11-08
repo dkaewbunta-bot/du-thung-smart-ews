@@ -1,0 +1,1095 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <title>DU THUNG SMART EWS</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+  
+  <!-- Chart.js สำหรับกราฟ -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- Leaflet.js สำหรับแผนที่ระบาดวิทยา GIS Spot Map -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <style>
+    body { background-color: #f0f4f3; font-family: 'Sarabun', sans-serif; }
+    .header-card { background: linear-gradient(135deg, #0b8043, #065e31); color: white; border-radius: 0 0 20px 20px; }
+    .card-custom { border-radius: 15px; border: none; box-shadow: 0 4px 15px rgba(0,0,0,0.06); }
+    .nav-pills .nav-link.active { background-color: #0b8043; border-radius: 10px; }
+    .nav-pills .nav-link { color: #0b8043; font-weight: bold; }
+    
+    .village-card { border-radius: 12px; border-left: 5px solid #28a745; transition: 0.3s; }
+    .village-card.alert-yellow { border-left-color: #ffc107; background-color: #fffdf5; }
+    .village-card.alert-red { border-left-color: #dc3545; background-color: #fdf5f5; }
+    
+    .badge-dengue { background-color: #ffebee; color: #c62828; border: 1px solid #ffcdd2; }
+    .badge-rsv { background-color: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; }
+    .badge-general { background-color: #e8f5e9; color: #1b5e20; border: 1px solid #c8e6c9; }
+
+    #map { height: 480px; width: 100%; border-radius: 15px; border: 2px solid #c8e6c9; z-index: 1; }
+
+    @media print {
+      body * { visibility: hidden; }
+      #memoPrintArea, #memoPrintArea * { visibility: visible; }
+      #memoPrintArea {
+        position: absolute; left: 0; top: 0; width: 100%; padding: 2cm 2.5cm !important;
+        font-family: 'TH Sarabun New', 'Sarabun', sans-serif !important;
+        font-size: 16pt !important; line-height: 1.4 !important; color: #000 !important;
+      }
+      .no-print { display: none !important; }
+    }
+    .garuda { width: 75px; height: auto; }
+    .memo-header { border-bottom: 1.5px solid #000; padding-bottom: 5px; margin-bottom: 15px; }
+    .indent { text-indent: 2.5cm; }
+  </style>
+</head>
+<body class="p-0">
+
+  <div class="header-card p-4 text-center mb-3">
+    <h5 class="mb-1">🚨 DU THUNG SMART EWS</h5>
+    <small>ระบบเฝ้าระวังและรายงานสอบสวนโรค รพ.สต.ดู่ทุ่ง (ม.2, 3, 4, 6, 10)</small>
+  </div>
+
+  <div class="container mb-5">
+    <ul class="nav nav-pills nav-fill mb-3 p-1 bg-white rounded-3 shadow-sm" id="pills-tab" role="tablist">
+      <li class="nav-item">
+        <button class="nav-link active" id="pills-form-tab" data-bs-toggle="pill" data-bs-target="#tab-form" type="button">
+          📝 รับแจ้งผู้ป่วย
+        </button>
+      </li>
+      <li class="nav-item">
+        <button class="nav-link" id="pills-dashboard-tab" data-bs-toggle="pill" data-bs-target="#tab-dashboard" type="button" onclick="loadData()">
+          📊 แดชบอร์ด & กราฟ
+        </button>
+      </li>
+      <li class="nav-item">
+        <button class="nav-link" id="pills-map-tab" data-bs-toggle="pill" data-bs-target="#tab-map" type="button" onclick="loadMapTab()">
+          🗺️ แผนที่ระบาด (GIS)
+        </button>
+      </li>
+      <li class="nav-item">
+        <button class="nav-link" id="pills-search-tab" data-bs-toggle="pill" data-bs-target="#tab-search" type="button" onclick="loadData()">
+          🔍 จัดการข้อมูล / รายงาน SRRT
+        </button>
+      </li>
+    </ul>
+
+    <div class="tab-content" id="pills-tabContent">
+      
+      <!-- แท็บที่ 1: ฟอร์มรับแจ้งเหตุ -->
+      <div class="tab-pane fade show active" id="tab-form">
+        <div class="card card-custom p-4 bg-white">
+          <form id="caseForm" onsubmit="submitForm(event)">
+            <h6 class="text-success border-bottom pb-2 mb-3">📍 ข้อมูลพื้นที่และผู้ป่วย</h6>
+            <div class="mb-3">
+              <label class="form-label">หมู่บ้านรับผิดชอบ <span class="text-danger">*</span></label>
+              <select class="form-select" id="village_no" name="village_no" required>
+                <option value="" disabled selected>-- เลือกหมู่บ้าน --</option>
+                <option value="2">หมู่ 2 บ้านดู่ทุ่ง</option>
+                <option value="3">หมู่ 3 บ้านหนองคำ</option>
+                <option value="4">หมู่ 4 บ้านพลับ</option>
+                <option value="6">หมู่ 6 บ้านคำบอน</option>
+                <option value="10">หมู่ 10 บ้านดู่ทุ่ง</option>
+              </select>
+            </div>
+            <div class="row">
+              <div class="col-8 mb-3">
+                <label class="form-label">ชื่อ-สกุล ผู้ป่วย <span class="text-danger">*</span></label>
+                <input type="text" class="form-control" name="patient_name" placeholder="ระบุชื่อ-สกุล" required>
+              </div>
+              <div class="col-4 mb-3">
+                <label class="form-label">บ้านเลขที่</label>
+                <input type="text" class="form-control" name="house_no" placeholder="เช่น 114">
+              </div>
+            </div>
+            <div class="row">
+              <div class="col-6 mb-3">
+                <label class="form-label">อายุ (ปี)</label>
+                <input type="number" class="form-control" name="age" placeholder="เช่น 25">
+              </div>
+              <div class="col-6 mb-3">
+                <label class="form-label">เพศ</label>
+                <select class="form-select" name="gender">
+                  <option value="หญิง">หญิง</option>
+                  <option value="ชาย">ชาย</option>
+                </select>
+              </div>
+            </div>
+
+            <h6 class="text-success border-bottom pb-2 mb-3 mt-2">🩺 ข้อมูลอาการและโรคเฝ้าระวัง</h6>
+            <div class="mb-3">
+              <label class="form-label">สงสัยโรค/กลุ่มอาการ <span class="text-danger">*</span></label>
+              <select class="form-select border-success" id="syndrome_group" name="syndrome_group" required onchange="checkOtherDisease(this.value, 'otherDiseaseBox', 'otherDiseaseInput')">
+                <option value="" disabled selected>-- เลือกกลุ่มโรคเฝ้าระวัง --</option>
+                <optgroup label="🫁 ระบบทางเดินหายใจ">
+                  <option value="RSV">🫁 RSV (ไวรัสทางเดินหายใจในเด็ก)</option>
+                  <option value="ไข้หวัดใหญ่/ทางเดินหายใจ">😷 ไข้หวัดใหญ่ / ปอดอักเสบ</option>
+                  <option value="โควิด-19">🦠 โควิด-19 (COVID-19)</option>
+                </optgroup>
+                <optgroup label="🦟 โรคนำโดยแมลงและสัตว์นำโรค">
+                  <option value="ไข้เลือดออก">🦟 ไข้เลือดออก (Dengue: DF/DHF)</option>
+                  <option value="ชิคุนกุนยา/ไข้ปวดข้อยุงลาย">🦟 ชิคุนกุนยา / ไข้ปวดข้อยุงลาย</option>
+                  <option value="โรคฉี่หนู (Leptospirosis)">🐀 โรคฉี่หนู (เลปโตสไปโรซิส)</option>
+                  <option value="พิษสุนัขบ้า/สัตว์กัด">🐕 สงสัยพิษสุนัขบ้า / สัตว์กัด</option>
+                </optgroup>
+                <optgroup label="💧 ระบบทางเดินอาหาร">
+                  <option value="อุจจาระร่วงเฉียบพลัน">💧 อุจจาระร่วงเฉียบพลัน / อาหารเป็นพิษ</option>
+                  <option value="มือ เท้า ปาก">👶 โรคมือ เท้า ปาก (HFMD)</option>
+                </optgroup>
+                <optgroup label="👁️ โรคติดต่ออื่นๆ">
+                  <option value="โรคตาแดง">👁️ โรคตาแดงระบาด</option>
+                  <option value="โรคสุกใส/อีสุกอีใส">🫧 โรคสุกใส (Chickenpox)</option>
+                  <option value="อื่นๆ">⚠️ อื่นๆ (พิมพ์ระบุเอง)</option>
+                </optgroup>
+              </select>
+            </div>
+
+            <div class="mb-3 d-none" id="otherDiseaseBox">
+              <label class="form-label text-danger">ระบุชื่อโรค/อาการที่พบ <span class="text-danger">*</span></label>
+              <input type="text" class="form-control border-danger" id="otherDiseaseInput" placeholder="พิมพ์ระบุชื่อโรค เช่น ไอกรน, ไข้หูดับ">
+            </div>
+
+            <div class="row">
+              <div class="col-6 mb-3">
+                <label class="form-label">วันเริ่มป่วย <span class="text-danger">*</span></label>
+                <input type="date" class="form-control" name="onset_date" required id="onsetDate">
+              </div>
+              <div class="col-6 mb-3">
+                <label class="form-label">อุณหภูมิ (°C)</label>
+                <input type="number" step="0.1" class="form-control" name="temp_celsius" placeholder="เช่น 38.5">
+              </div>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">อาการสำคัญ</label>
+              <textarea class="form-control" name="symptoms" rows="2" placeholder="เช่น มีไข้ ไอ ปวดเมื่อยตามตัว"></textarea>
+            </div>
+            <h6 class="text-success border-bottom pb-2 mb-3 mt-2">👤 ข้อมูลผู้รายงาน</h6>
+            <div class="row">
+              <div class="col-6 mb-3">
+                <label class="form-label">ชื่อผู้รายงาน <span class="text-danger">*</span></label>
+                <input type="text" class="form-control" name="reporter_name" required>
+              </div>
+              <div class="col-6 mb-3">
+                <label class="form-label">เบอร์ติดต่อ <span class="text-danger">*</span></label>
+                <input type="tel" class="form-control" name="reporter_phone" required>
+              </div>
+            </div>
+            <button type="submit" id="btnSubmit" class="btn btn-success w-100 py-2 mt-2">🚀 ส่งรายงานแจ้งเหตุทันที</button>
+          </form>
+        </div>
+      </div>
+
+      <!-- แท็บที่ 2: แดชบอร์ดภาพรวม & กราฟระบาดวิทยา -->
+      <div class="tab-pane fade" id="tab-dashboard">
+        
+        <!-- แถบเลือกปีงบประมาณ -->
+        <div class="card card-custom p-3 bg-white mb-3">
+          <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <div>
+              <h6 class="fw-bold text-success mb-0">📅 ข้อมูลสถิติตามปีงบประมาณ (ต.ค. - ก.ย.)</h6>
+              <small class="text-muted">ปีงบ 2568: ต.ค.67 - ก.ย.68 | ปีงบ 2569: ต.ค.68 - ก.ย.69</small>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+              <label class="small fw-bold text-secondary text-nowrap">เลือกปีงบ:</label>
+              <select class="form-select form-select-sm border-success fw-bold" id="dashFiscalYear" style="width: 170px;" onchange="loadData()">
+                <option value="">ทุกปีงบประมาณ</option>
+                <option value="2569">ปีงบประมาณ 2569</option>
+                <option value="2568">ปีงบประมาณ 2568</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="row g-2 mb-3 text-center">
+          <div class="col-4">
+            <div class="card card-custom p-3 bg-white">
+              <small class="text-muted">เคสผู้ป่วยสะสม</small>
+              <h3 class="mb-0 text-success fw-bold" id="dashTotal">0</h3>
+            </div>
+          </div>
+          <div class="col-4">
+            <div class="card card-custom p-3 bg-white">
+              <small class="text-muted">พื้นที่พบผู้ป่วยสูงสุด</small>
+              <h5 class="mb-0 text-primary mt-1 fw-bold" id="dashTopVillage">-</h5>
+            </div>
+          </div>
+          <div class="col-4">
+            <div class="card card-custom p-3 bg-white">
+              <small class="text-muted">โรคที่พบมากที่สุด</small>
+              <h5 class="mb-0 text-danger mt-1 fw-bold" id="dashTopSyndrome">-</h5>
+            </div>
+          </div>
+        </div>
+
+        <!-- 🌟 กราฟเปรียบเทียบปีงบประมาณ 2568 vs 2569 รายเดือน (ต.ค. - ก.ย.) -->
+        <div class="row g-3 mb-3">
+          <div class="col-12">
+            <div class="card card-custom p-3 bg-white">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <h6 class="fw-bold text-dark mb-0">📈 แนวโน้มผู้ป่วยรายเดือน เปรียบเทียบปีงบประมาณ 2568 vs 2569</h6>
+                <span class="badge bg-light text-dark border">รอบ 12 เดือน (ต.ค. - ก.ย.)</span>
+              </div>
+              <div style="position: relative; height: 260px;">
+                <canvas id="fiscalTrendChart"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row g-3 mb-3">
+          <div class="col-md-7">
+            <div class="card card-custom p-3 bg-white h-100">
+              <h6 class="fw-bold text-dark mb-2">📊 กราฟเปรียบเทียบจำนวนผู้ป่วย 5 หมู่บ้าน</h6>
+              <div style="position: relative; height: 230px;">
+                <canvas id="villageChart"></canvas>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-5">
+            <div class="card card-custom p-3 bg-white h-100">
+              <h6 class="fw-bold text-dark mb-2">🍩 สัดส่วนกลุ่มโรคระบาดในพื้นที่</h6>
+              <div style="position: relative; height: 230px;">
+                <canvas id="syndromeChart"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <h6 class="text-success fw-bold mb-2">📍 สถานการณ์เฝ้าระวัง 5 หมู่บ้านรับผิดชอบ (EWS Risk Status)</h6>
+        <div class="row g-2 mb-3" id="villageCardsContainer"></div>
+      </div>
+
+      <!-- แท็บที่ 3: แผนที่จุดระบาดวิทยา (GIS Spot Map Tab) -->
+      <div class="tab-pane fade" id="tab-map">
+        <div class="card card-custom p-3 bg-white mb-3">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="fw-bold text-dark mb-0">🗺️ แผนที่จุดเกิดโรคทางระบาดวิทยา ต.ดู่ทุ่ง (Spot Map)</h6>
+            <div>
+              <span class="badge bg-danger">🔴 ไข้เลือดออก (รัศมี 100ม.)</span>
+              <span class="badge bg-primary">🔵 RSV</span>
+              <span class="badge bg-warning text-dark">🟠 ไข้หวัดใหญ่</span>
+              <span class="badge bg-success">🟢 โรคอื่นๆ</span>
+            </div>
+          </div>
+          <div id="map"></div>
+          <small class="text-muted mt-2 d-block">
+            💡 <strong>คำแนะนำ:</strong> คลิกที่หมุดเพื่อดูรายละเอียดผู้ป่วย | วงกลมสีแดงแสดงรัศมีพ่นหมอกควัน 100 เมตร
+          </small>
+        </div>
+      </div>
+
+      <!-- แท็บที่ 4: จัดการข้อมูล / รายงานสอบสวนโรค -->
+      <div class="tab-pane fade" id="tab-search">
+        <div class="card card-custom p-3 bg-white mb-3">
+          <div class="row g-2">
+            <div class="col-4">
+              <select class="form-select form-select-sm" id="filterFiscalYear" onchange="syncAndLoadData('search')">
+                <option value="">ทุกปีงบประมาณ</option>
+                <option value="2569">ปีงบประมาณ 2569</option>
+                <option value="2568">ปีงบประมาณ 2568</option>
+              </select>
+            </div>
+            <div class="col-4">
+              <select class="form-select form-select-sm" id="filterVillage" onchange="loadData()">
+                <option value="">ทุกหมู่บ้านในเขต</option>
+                <option value="2">หมู่ 2 บ้านดู่ทุ่ง</option>
+                <option value="3">หมู่ 3 บ้านหนองคำ</option>
+                <option value="4">หมู่ 4 บ้านพลับ</option>
+                <option value="6">หมู่ 6 บ้านคำบอน</option>
+                <option value="10">หมู่ 10 บ้านดู่ทุ่ง</option>
+              </select>
+            </div>
+            <div class="col-4">
+              <select class="form-select form-select-sm" id="filterSyndrome" onchange="loadData()">
+                <option value="">ทุกกลุ่มโรค</option>
+                <option value="RSV">RSV</option>
+                <option value="ไข้เลือดออก">ไข้เลือดออก</option>
+                <option value="ไข้หวัดใหญ่/ทางเดินหายใจ">ไข้หวัดใหญ่/ทางเดินหายใจ</option>
+                <option value="โควิด-19">โควิด-19</option>
+                <option value="อุจจาระร่วงเฉียบพลัน">อุจจาระร่วง</option>
+                <option value="มือ เท้า ปาก">มือ เท้า ปาก</option>
+                <option value="โรคฉี่หนู (Leptospirosis)">โรคฉี่หนู</option>
+                <option value="อื่นๆ">อื่นๆ</option>
+              </select>
+            </div>
+            <div class="col-12 mt-2">
+              <input type="text" class="form-control form-control-sm" id="searchKeyword" placeholder="🔍 ค้นหาชื่อผู้ป่วย, โรค หรือรหัสเคส..." onkeyup="loadData()">
+            </div>
+          </div>
+        </div>
+
+        <div id="caseListContainer"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Modal หน้าต่างร่างรายงานสอบสวนโรค -->
+  <div class="modal fade" id="investModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+      <div class="modal-content">
+        <div class="modal-header bg-success text-white">
+          <h6 class="modal-title fw-bold">📝 จัดทำรายงานการสอบสวนโรคเบื้องต้น (เสนอผู้บริหาร)</h6>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body p-4">
+          <form id="investForm" onsubmit="submitInvestigation(event)">
+            <input type="hidden" id="invCaseId" name="case_id">
+            
+            <div class="d-flex justify-content-between align-items-center alert alert-success p-2 mb-3">
+              <span><strong>เคส:</strong> <span id="invPatientInfo">-</span></span>
+              <button type="button" class="btn btn-sm btn-dark" onclick="autoGenerateMemoDraft()">
+                ✨ สร้างร่างรายงานอัตโนมัติ (AI Draft)
+              </button>
+            </div>
+
+            <div class="row g-2 mb-3 p-3 bg-light rounded border">
+              <div class="col-md-3">
+                <label class="form-label small fw-bold">เลขที่หนังสือ</label>
+                <input type="text" class="form-control form-control-sm" id="memoDocNo" name="doc_no" value="ยส 0133.3 / 521">
+              </div>
+              <div class="col-md-3">
+                <label class="form-label small fw-bold">วันที่รายงาน</label>
+                <input type="date" class="form-control form-control-sm" id="invDate" name="invest_date" required>
+              </div>
+              <div class="col-md-3">
+                <label class="form-label small fw-bold">ผู้สอบสวนโรค (SRRT)</label>
+                <input type="text" class="form-control form-control-sm" id="memoInvestigator" name="investigator" value="นางสาวดวงมาลา แก้วบุญตา">
+              </div>
+              <div class="col-md-3">
+                <label class="form-label small fw-bold">ผู้อำนวยการ รพ.สต.ดู่ทุ่ง</label>
+                <input type="text" class="form-control form-control-sm" id="memoDirector" name="director" value="นายสมชาย ลิ้มประสาท">
+              </div>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label fw-bold">1. ความเป็นมา (Background)</label>
+              <textarea class="form-control" id="memoBackground" name="background" rows="3"></textarea>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label fw-bold">2. ผลการสอบสวนโรค (รายละเอียดผู้ป่วย / อาการ / การวินิจฉัย)</label>
+              <textarea class="form-control" id="memoInvestResult" name="invest_result" rows="3"></textarea>
+            </div>
+
+            <div class="row g-2 mb-3">
+              <div class="col-md-6">
+                <label class="form-label fw-bold">ผลการตรวจทางห้องปฏิบัติการ (Lab)</label>
+                <textarea class="form-control" id="memoLabResult" name="lab_result" rows="3"></textarea>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label fw-bold">ข้อมูลด้านสิ่งแวดล้อม (HI / CI ในชุมชน)</label>
+                <textarea class="form-control" id="memoEnvResult" name="env_result" rows="3"></textarea>
+              </div>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label fw-bold">3. กิจกรรมที่ได้ดำเนินการแล้ว</label>
+              <textarea class="form-control" id="memoActions" name="actions" rows="3"></textarea>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label fw-bold">4. แนวโน้มการระบาดและสรุปความเร่งด่วน</label>
+              <textarea class="form-control" id="memoTrend" name="outbreak_trend" rows="3"></textarea>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label fw-bold">5. ข้อเสนอเพื่อพิจารณาดำเนินการ</label>
+              <textarea class="form-control" id="memoRecommendations" name="recommendations" rows="3"></textarea>
+            </div>
+
+            <div class="d-flex justify-content-between border-top pt-3 mt-3">
+              <button type="button" class="btn btn-outline-danger" onclick="printOfficialMemo()">
+                🖨️ พิมพ์บันทึกข้อความ (ตราครุฑ A4)
+              </button>
+              <button type="submit" id="btnSaveInvest" class="btn btn-success px-4">
+                💾 บันทึกรายงานเสนอผู้บริหาร
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal หน้าต่างแก้ไขข้อมูลเคส -->
+  <div class="modal fade" id="editModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header bg-warning text-dark">
+          <h6 class="modal-title fw-bold">✏️ แก้ไขข้อมูลผู้ป่วย (<span id="editCaseIdText"></span>)</h6>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <form id="editForm" onsubmit="submitEditForm(event)">
+            <input type="hidden" id="editCaseId" name="case_id">
+            <div class="mb-3">
+              <label class="form-label">หมู่บ้านรับผิดชอบ</label>
+              <select class="form-select" id="editVillage" name="village_no" required>
+                <option value="2">หมู่ 2 บ้านดู่ทุ่ง</option>
+                <option value="3">หมู่ 3 บ้านหนองคำ</option>
+                <option value="4">หมู่ 4 บ้านพลับ</option>
+                <option value="6">หมู่ 6 บ้านคำบอน</option>
+                <option value="10">หมู่ 10 บ้านดู่ทุ่ง</option>
+              </select>
+            </div>
+            <div class="row">
+              <div class="col-8 mb-3">
+                <label class="form-label">ชื่อ-สกุล</label>
+                <input type="text" class="form-control" id="editName" name="patient_name" required>
+              </div>
+              <div class="col-4 mb-3">
+                <label class="form-label">บ้านเลขที่</label>
+                <input type="text" class="form-control" id="editHouse" name="house_no">
+              </div>
+            </div>
+            <div class="row">
+              <div class="col-6 mb-3">
+                <label class="form-label">อายุ (ปี)</label>
+                <input type="number" class="form-control" id="editAge" name="age">
+              </div>
+              <div class="col-6 mb-3">
+                <label class="form-label">เพศ</label>
+                <select class="form-select" id="editGender" name="gender">
+                  <option value="ชาย">ชาย</option>
+                  <option value="หญิง">หญิง</option>
+                </select>
+              </div>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">โรค/กลุ่มอาการ</label>
+              <input type="text" class="form-control" id="editSyndrome" name="syndrome_group" required>
+            </div>
+            <div class="row">
+              <div class="col-6 mb-3">
+                <label class="form-label">วันเริ่มป่วย</label>
+                <input type="date" class="form-control" id="editOnset" name="onset_date" required>
+              </div>
+              <div class="col-6 mb-3">
+                <label class="form-label">อุณหภูมิ (°C)</label>
+                <input type="number" step="0.1" class="form-control" id="editTemp" name="temp_celsius">
+              </div>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">อาการสำคัญ</label>
+              <textarea class="form-control" id="editSymptoms" name="symptoms" rows="2"></textarea>
+            </div>
+            <div class="d-flex justify-content-end gap-2 mt-4">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+              <button type="submit" id="btnUpdate" class="btn btn-warning fw-bold">💾 บันทึกการแก้ไข</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ส่วนพิมพ์บันทึกข้อความตราครุฑ A4 -->
+  <div id="memoPrintArea" class="d-none">
+    <div class="text-center position-relative mb-2">
+      <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/87/Garuda_Emblem_of_Thailand.svg/200px-Garuda_Emblem_of_Thailand.svg.png" class="garuda mb-2" alt="ตราครุฑ" crossorigin="anonymous">
+      <h3 class="fw-bold m-0" style="font-size: 26pt; font-family: 'TH Sarabun New', sans-serif;">บันทึกข้อความ</h3>
+    </div>
+    
+    <div class="memo-header" style="line-height: 1.6;">
+      <p class="m-0"><strong>ส่วนราชการ</strong> &nbsp;โรงพยาบาลส่งเสริมสุขภาพตำบลดู่ทุ่ง อำเภอเมืองยโสธร จังหวัดยโสธร &nbsp;โทร. ๐๔๕-๕๘๒๕๘๒</p>
+      <div class="d-flex justify-content-between">
+        <p class="m-0"><strong>ที่</strong> &nbsp;<span id="pDocNo"></span></p>
+        <p class="m-0"><strong>วันที่</strong> &nbsp;<span id="pDate"></span></p>
+      </div>
+      <p class="m-0"><strong>เรื่อง</strong> &nbsp;รายงานการสอบสวนโรคเบื้องต้น กรณีพบผู้ป่วย<span id="pDiseaseTitle"></span></p>
+      <p class="m-0"><strong>เรียน</strong> &nbsp;สาธารณสุขอำเภอเมืองยโสธร</p>
+    </div>
+
+    <div style="text-align: justify;">
+      <p class="fw-bold mb-1"><u>ความเป็นมา</u></p>
+      <p class="indent mb-2" id="pBackground"></p>
+
+      <p class="fw-bold mb-1"><u>ผลการสอบสวนโรค</u></p>
+      <p class="indent mb-2" id="pInvestResult"></p>
+      
+      <p class="fw-bold mb-1"><u>ผลการตรวจทางห้องปฏิบัติการและข้อมูลด้านสิ่งแวดล้อม</u></p>
+      <p class="indent mb-1" id="pLabEnv"></p>
+
+      <p class="fw-bold mb-1 mt-2"><u>กิจกรรมที่ได้ดำเนินการแล้ว</u></p>
+      <p class="indent mb-2" id="pActions"></p>
+
+      <p class="fw-bold mb-1"><u>แนวโน้มการระบาดและสรุปความเร่งด่วน</u></p>
+      <p class="indent mb-2" id="pTrend"></p>
+
+      <p class="fw-bold mb-1"><u>ข้อเสนอเพื่อพิจารณาดำเนินการ</u></p>
+      <p class="indent mb-3" id="pRecommendations"></p>
+
+      <p class="indent mb-4">จึงเรียนมาเพื่อโปรดทราบและพิจารณา</p>
+    </div>
+
+    <div class="row mt-4" style="page-break-inside: avoid;">
+      <div class="col-6 text-center">
+        <p class="mb-5">ลงชื่อ........................................................<br>ผู้สอบสวนโรค</p>
+        <p>(<span id="pInvestigatorName">นางสาวดวงมาลา แก้วบุญตา</span>)<br>ตำแหน่ง นักวิชาการสาธารณสุขปฏิบัติการ</p>
+      </div>
+      <div class="col-6 text-center">
+        <p class="mb-5">ลงชื่อ........................................................<br>ผู้อนุมัติ/รับรองรายงาน</p>
+        <p>(<span id="pDirectorName">นายสมชาย ลิ้มประสาท</span>)<br>ผู้อำนวยการโรงพยาบาลส่งเสริมสุขภาพตำบลดู่ทุ่ง</p>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script>
+    const DUTHUNG_CENTER = [15.882538666582592, 104.0773126296701]; 
+
+    const VILLAGE_COORDS = {
+      "2": [15.8825, 104.0773],
+      "3": [15.8910, 104.0880],
+      "4": [15.8740, 104.0720],
+      "6": [15.8950, 104.0680],
+      "10": [15.8810, 104.0830]
+    };
+
+    const VILLAGE_NAMES = { "2": "บ้านดู่ทุ่ง", "3": "บ้านหนองคำ", "4": "บ้านพลับ", "6": "บ้านคำบอน", "10": "บ้านดู่ทุ่ง" };
+    document.getElementById('onsetDate').value = new Date().toISOString().split('T')[0];
+    document.getElementById('invDate').value = new Date().toISOString().split('T')[0];
+    
+    var currentCaseObj = null;
+    var allCasesCache = [];
+    var chartVillageInstance = null;
+    var chartSyndromeInstance = null;
+    var chartFiscalTrendInstance = null;
+    var mapInstance = null;
+    var markersLayer = null;
+
+    function syncAndLoadData(fromTab) {
+      if (fromTab === 'search') {
+        document.getElementById('dashFiscalYear').value = document.getElementById('filterFiscalYear').value;
+      } else {
+        document.getElementById('filterFiscalYear').value = document.getElementById('dashFiscalYear').value;
+      }
+      loadData();
+    }
+
+    function checkOtherDisease(val, boxId, inputId) {
+      var box = document.getElementById(boxId);
+      var input = document.getElementById(inputId);
+      if (val === 'อื่นๆ') {
+        box.classList.remove('d-none');
+        input.required = true;
+        input.focus();
+      } else {
+        box.classList.add('d-none');
+        input.required = false;
+        input.value = "";
+      }
+    }
+
+    function submitForm(e) {
+      e.preventDefault();
+      var btn = document.getElementById('btnSubmit');
+      btn.innerText = "⏳ กำลังบันทึกและวิเคราะห์โรค...";
+      btn.disabled = true;
+
+      var formData = new FormData(document.getElementById('caseForm'));
+      var dataObj = Object.fromEntries(formData.entries());
+
+      if (dataObj.syndrome_group === 'อื่นๆ') {
+        var custom = document.getElementById('otherDiseaseInput').value.trim();
+        dataObj.syndrome_group = custom ? "อื่นๆ (" + custom + ")" : "อื่นๆ";
+      }
+
+      google.script.run
+        .withSuccessHandler(function(response) {
+          btn.innerText = "🚀 ส่งรายงานแจ้งเหตุทันที";
+          btn.disabled = false;
+          if(response.status === "success") {
+            Swal.fire({ icon: 'success', title: 'บันทึกสำเร็จ!', text: response.message, confirmButtonColor: '#0b8043' })
+              .then(() => {
+                document.getElementById('caseForm').reset();
+                document.getElementById('otherDiseaseBox').classList.add('d-none');
+                document.getElementById('onsetDate').value = new Date().toISOString().split('T')[0];
+              });
+          } else {
+            Swal.fire('ข้อผิดพลาด', response.message, 'error');
+          }
+        })
+        .savePatientCase(dataObj);
+    }
+
+    function loadData() {
+      var chosenFY = document.getElementById('dashFiscalYear').value;
+      document.getElementById('filterFiscalYear').value = chosenFY;
+
+      var filter = {
+        fiscalYear: chosenFY,
+        village: document.getElementById('filterVillage').value,
+        syndrome: document.getElementById('filterSyndrome').value,
+        keyword: document.getElementById('searchKeyword').value
+      };
+
+      google.script.run.withSuccessHandler(function(res) {
+        allCasesCache = res.cases || [];
+        document.getElementById('dashTotal').innerText = res.total || 0;
+        
+        var topVillage = Object.keys(res.statsVillage || {}).reduce((a, b) => (res.statsVillage[a] || 0) > (res.statsVillage[b] || 0) ? a : b, "2");
+        var topCount = res.statsVillage ? (res.statsVillage[topVillage] || 0) : 0;
+        var vName = VILLAGE_NAMES[topVillage] || "";
+        document.getElementById('dashTopVillage').innerText = topCount > 0 ? `ม.${topVillage} ${vName} (${topCount})` : "-";
+        
+        var syndromes = Object.keys(res.statsSyndrome || {});
+        var topSyndrome = syndromes.length ? syndromes.reduce((a, b) => res.statsSyndrome[a] > res.statsSyndrome[b] ? a : b) : "-";
+        document.getElementById('dashTopSyndrome').innerText = topSyndrome;
+
+        // วาดการ์ด 5 หมู่บ้าน
+        var vCardsHtml = "";
+        var vLabels = [];
+        var vData = [];
+        var vColors = [];
+
+        ["2", "3", "4", "6", "10"].forEach(function(vKey) {
+          var count = (res.statsVillage && res.statsVillage[vKey]) || 0;
+          var statusClass = "village-card";
+          var statusBadge = '<span class="badge bg-success">🟢 ปกติ</span>';
+          var barColor = '#28a745';
+          
+          if (count >= 2) {
+            statusClass += " alert-red";
+            statusBadge = '<span class="badge bg-danger">🔴 เสี่ยงระบาด</span>';
+            barColor = '#dc3545';
+          } else if (count === 1) {
+            statusClass += " alert-yellow";
+            statusBadge = '<span class="badge bg-warning text-dark">🟡 เฝ้าระวัง</span>';
+            barColor = '#ffc107';
+          }
+
+          vLabels.push(`ม.${vKey} ${VILLAGE_NAMES[vKey]}`);
+          vData.push(count);
+          vColors.push(barColor);
+
+          vCardsHtml += `
+            <div class="col-md-4 col-sm-6">
+              <div class="card p-3 bg-white shadow-sm ${statusClass}">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                  <h6 class="fw-bold mb-0 text-dark">หมู่ ${vKey} ${VILLAGE_NAMES[vKey]}</h6>
+                  ${statusBadge}
+                </div>
+                <div class="d-flex justify-content-between align-items-end mt-2">
+                  <small class="text-muted">ผู้ป่วยสะสม</small>
+                  <h4 class="mb-0 fw-bold text-dark">${count} <small style="font-size: 1rem;">ราย</small></h4>
+                </div>
+              </div>
+            </div>
+          `;
+        });
+        document.getElementById('villageCardsContainer').innerHTML = vCardsHtml;
+
+        renderVillageChart(vLabels, vData, vColors);
+
+        var sLabels = Object.keys(res.statsSyndrome || {});
+        var sData = sLabels.map(k => res.statsSyndrome[k]);
+        renderSyndromeChart(sLabels, sData);
+
+        // วาดกราฟเปรียบเทียบปีงบประมาณ 2568 vs 2569 (ต.ค. - ก.ย.)
+        renderFiscalTrendChart(res.statsByFiscalYear || {});
+
+        // Render รายการเคส
+        var html = "";
+        if(!res.cases || res.cases.length === 0) {
+          html = '<div class="card card-custom p-4 text-center text-muted">ไม่พบข้อมูลผู้ป่วย</div>';
+        } else {
+          res.cases.forEach(function(c) {
+            var badgeClass = "badge-general";
+            if (c.syndrome.includes("ไข้เลือดออก")) badgeClass = "badge-dengue";
+            else if (c.syndrome.includes("RSV")) badgeClass = "badge-rsv";
+
+            var villageName = VILLAGE_NAMES[c.village] || "บ้านดู่ทุ่ง";
+            html += `
+              <div class="card card-custom p-3 bg-white mb-2">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                  <div>
+                    <span class="badge ${badgeClass}">${c.syndrome}</span>
+                    <span class="badge bg-secondary">ปีงบ ${c.fiscalYear || '-'}</span>
+                  </div>
+                  <small class="text-muted">เริ่มป่วย: ${c.onset}</small>
+                </div>
+                <h6 class="mb-1 text-dark">${c.name} <small class="text-muted">(${c.gender}, ${c.age} ปี)</small></h6>
+                <small class="text-secondary mb-2">📍 หมู่ ${c.village} ${villageName} ${c.house ? 'เลขที่ ' + c.house : ''}</small>
+                
+                <div class="d-flex justify-content-between align-items-center border-top pt-2 mt-2">
+                  <span class="badge bg-light text-dark border">${c.id}</span>
+                  <div class="btn-group btn-group-sm">
+                    <button class="btn btn-outline-success fw-bold" onclick='openInvestModal(${JSON.stringify(c)})' title="ทำรายงานเสนอผู้บริหาร">
+                      📋 เสนอรายงาน
+                    </button>
+                    <button class="btn btn-outline-warning" onclick='openEditModal(${JSON.stringify(c)})' title="แก้ไขข้อมูล">
+                      ✏️ แก้ไข
+                    </button>
+                    <button class="btn btn-outline-danger" onclick='confirmDeleteCase("${c.id}", "${c.name}")' title="ลบเคส">
+                      🗑️ ลบ
+                    </button>
+                  </div>
+                </div>
+              </div>
+            `;
+          });
+        }
+        document.getElementById('caseListContainer').innerHTML = html;
+      }).searchPatientCases(filter);
+    }
+
+    // ==========================================
+    // 📈 กราฟเปรียบเทียบแนวโน้มปีงบประมาณ 2568 vs 2569
+    // เรียง 12 เดือน (ต.ค. -> ก.ย.) ตามปีงบประมาณ
+    // ==========================================
+    function renderFiscalTrendChart(statsFY) {
+      var ctx = document.getElementById('fiscalTrendChart').getContext('2d');
+      if (chartFiscalTrendInstance) chartFiscalTrendInstance.destroy();
+
+      var monthKeys = ["10", "11", "12", "01", "02", "03", "04", "05", "06", "07", "08", "09"];
+      var monthLabels = ["ต.ค.", "พ.ย.", "ธ.ค.", "ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย."];
+
+      var data2568 = monthKeys.map(k => (statsFY["2568"] && statsFY["2568"].monthly) ? statsFY["2568"].monthly[k] || 0 : 0);
+      var data2569 = monthKeys.map(k => (statsFY["2569"] && statsFY["2569"].monthly) ? statsFY["2569"].monthly[k] || 0 : 0);
+
+      chartFiscalTrendInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: monthLabels,
+          datasets: [
+            {
+              label: 'ปีงบประมาณ 2568',
+              data: data2568,
+              borderColor: '#0284c7',
+              backgroundColor: 'rgba(2, 132, 199, 0.1)',
+              borderWidth: 2.5,
+              tension: 0.3,
+              fill: true,
+              pointRadius: 4
+            },
+            {
+              label: 'ปีงบประมาณ 2569',
+              data: data2569,
+              borderColor: '#dc2626',
+              backgroundColor: 'rgba(220, 38, 38, 0.15)',
+              borderWidth: 3,
+              tension: 0.3,
+              fill: true,
+              pointRadius: 5
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'top', labels: { boxWidth: 15, font: { family: 'Sarabun', size: 12, weight: 'bold' } } },
+            tooltip: {
+              callbacks: {
+                title: function(items) { return 'เดือน: ' + items[0].label; },
+                label: function(item) { return item.dataset.label + ': ' + item.raw + ' ราย'; }
+              }
+            }
+          },
+          scales: {
+            y: { beginAtZero: true, ticks: { stepSize: 1, font: { family: 'Sarabun' } } },
+            x: { ticks: { font: { family: 'Sarabun' } } }
+          }
+        }
+      });
+    }
+
+    // ==========================================
+    // 🗺️ ระบบแผนที่ GIS SPOT MAP
+    // ==========================================
+    function loadMapTab() {
+      setTimeout(function() {
+        if (!mapInstance) {
+          mapInstance = L.map('map').setView(DUTHUNG_CENTER, 15);
+          
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap | รพ.สต.ดู่ทุ่ง EWS',
+            maxZoom: 18
+          }).addTo(mapInstance);
+
+          markersLayer = L.layerGroup().addTo(mapInstance);
+        } else {
+          mapInstance.invalidateSize();
+          mapInstance.setView(DUTHUNG_CENTER, 15);
+        }
+
+        renderMapPins();
+      }, 300);
+    }
+
+    function renderMapPins() {
+      if (!markersLayer) return;
+      markersLayer.clearLayers();
+
+      var hospIcon = L.divIcon({
+        className: 'custom-hosp-icon',
+        html: '<div style="background-color:#0b8043; color:white; border-radius:50%; width:34px; height:34px; display:flex; align-items:center; justify-content:center; font-size:18px; border:3px solid white; box-shadow:0 3px 8px rgba(0,0,0,0.5);">🏥</div>',
+        iconSize: [34, 34]
+      });
+
+      L.marker(DUTHUNG_CENTER, { icon: hospIcon })
+       .bindPopup(`
+          <div style="font-family:'Sarabun'; text-align:center; padding:5px;">
+            <strong style="color:#0b8043; font-size:14px;">🏥 รพ.สต.ดู่ทุ่ง</strong><br>
+            <small class="text-muted">ศูนย์ปฏิบัติการตอบโต้ภาวะฉุกเฉิน (EOC)</small><br>
+            <a href="https://maps.app.goo.gl/MDVqTex8U7n6oqxu6" target="_blank" class="btn btn-sm btn-success text-white mt-2" style="font-size:11px; border-radius:15px;">
+              📍 เปิดดูใน Google Maps
+            </a>
+          </div>
+       `)
+       .addTo(markersLayer);
+
+      allCasesCache.forEach(function(c) {
+        var baseCoord = VILLAGE_COORDS[c.village.toString()] || DUTHUNG_CENTER;
+        
+        var jitterLat = (Math.random() - 0.5) * 0.003;
+        var jitterLng = (Math.random() - 0.5) * 0.003;
+        var caseLat = baseCoord[0] + jitterLat;
+        var caseLng = baseCoord[1] + jitterLng;
+
+        var pinColor = "#28a745";
+        var isDengue = false;
+
+        if (c.syndrome.includes("ไข้เลือดออก")) {
+          pinColor = "#dc3545";
+          isDengue = true;
+        } else if (c.syndrome.includes("RSV")) {
+          pinColor = "#0284c7";
+        } else if (c.syndrome.includes("หวัดใหญ่")) {
+          pinColor = "#ea580c";
+        }
+
+        if (isDengue) {
+          L.circle([caseLat, caseLng], {
+            color: '#dc3545',
+            fillColor: '#f87171',
+            fillOpacity: 0.25,
+            radius: 100
+          }).bindPopup(`⚠️ <strong>ขอบเขตรัศมีพ่นหมอกควัน 100 เมตร</strong><br>ผู้ป่วย: ${c.name} (${c.syndrome})`)
+            .addTo(markersLayer);
+        }
+
+        var caseMarker = L.circleMarker([caseLat, caseLng], {
+          radius: 9,
+          fillColor: pinColor,
+          color: '#ffffff',
+          weight: 2,
+          opacity: 1,
+          fillOpacity: 0.9
+        });
+
+        var villageName = VILLAGE_NAMES[c.village] || "บ้านดู่ทุ่ง";
+        var popupContent = `
+          <div style="font-family: 'Sarabun'; font-size:13px; line-height:1.4;">
+            <strong style="color:${pinColor}; font-size:14px;">${c.syndrome}</strong><br>
+            <strong>ผู้ป่วย:</strong> ${c.name} (${c.gender}, ${c.age} ปี)<br>
+            <strong>ที่อยู่:</strong> บ้านเลขที่ ${c.house} หมู่ ${c.village} ${villageName}<br>
+            <strong>เริ่มป่วย:</strong> ${c.onset} (ปีงบ ${c.fiscalYear || '-' })<br>
+            <span class="badge bg-secondary mt-1">${c.id}</span>
+          </div>
+        `;
+
+        caseMarker.bindPopup(popupContent).addTo(markersLayer);
+      });
+    }
+
+    function renderVillageChart(labels, data, colors) {
+      var ctx = document.getElementById('villageChart').getContext('2d');
+      if (chartVillageInstance) chartVillageInstance.destroy();
+      chartVillageInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [{ label: 'จำนวนผู้ป่วย (ราย)', data: data, backgroundColor: colors, borderRadius: 6 }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
+        }
+      });
+    }
+
+    function renderSyndromeChart(labels, data) {
+      var ctx = document.getElementById('syndromeChart').getContext('2d');
+      if (chartSyndromeInstance) chartSyndromeInstance.destroy();
+      var defaultColors = ['#0b8043', '#e65100', '#0284c7', '#d97706', '#dc2626', '#7c3aed'];
+
+      chartSyndromeInstance = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: labels.length ? labels : ['ยังไม่มีข้อมูล'],
+          datasets: [{ data: data.length ? data : [0], backgroundColor: labels.length ? defaultColors.slice(0, labels.length) : ['#e0e0e0'] }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } }
+        }
+      });
+    }
+
+    function autoGenerateMemoDraft() {
+      if(!currentCaseObj) return;
+      var c = currentCaseObj;
+      var vName = VILLAGE_NAMES[c.village] || "บ้านดู่ทุ่ง";
+
+      document.getElementById('memoBackground').value = 
+        `เมื่อวันที่ ${c.reported || 'เร็วๆ นี้'} ทีม SRRT โรงพยาบาลส่งเสริมสุขภาพตำบลดู่ทุ่ง อำเภอเมืองยโสธร ได้รับแจ้งว่าพบผู้ป่วยสงสัยโรค ${c.syndrome} สถานที่เกิดเหตุ บ้านเลขที่ ${c.house} หมู่ ${c.village} ${vName} ตำบลดู่ทุ่ง อำเภอเมืองยโสธร จังหวัดยโสธร จำนวน 1 ราย ดังนั้น ทีม SRRT โรงพยาบาลส่งเสริมสุขภาพตำบลดู่ทุ่ง จึงลงพื้นที่สอบสวนโรคเพื่อยืนยันการเจ็บป่วย ค้นหาผู้ป่วยเพิ่มเติม และดำเนินการตามมาตรการควบคุมและป้องกันการระบาดของโรคในพื้นที่อย่างเร่งด่วน`;
+
+      document.getElementById('memoInvestResult').value = 
+        `จากแบบสอบสวนโรคพบผู้ป่วย เพศ${c.gender} อายุ ${c.age} ปี พักอาศัยบ้านเลขที่ ${c.house} หมู่ ${c.village} ${vName} ตำบลดู่ทุ่ง เริ่มป่วยวันที่ ${c.onset} อาการสำคัญที่พบได้แก่ ${c.symptoms || 'มีไข้ อ่อนเพลีย'} อุณหภูมิร่างกาย ${c.temp || '38.0'} องศาเซลเซียส เบื้องต้นยังเป็นผู้ป่วยรายเดี่ยวในพื้นที่`;
+
+      if (c.syndrome.includes("ไข้เลือดออก")) {
+        document.getElementById('memoLabResult').value = `ผลการตรวจทางห้องปฏิบัติการ: ตรวจ CBC พบเกล็ดเลือดต่ำ ยืนยันการวินิจฉัยสงสัยโรคไข้เลือดออก (Dengue Fever)`;
+        document.getElementById('memoEnvResult').value = `ผลสำรวจความชุกดัชนีลูกน้ำยุงลายในรัศมี 100 เมตร: พบค่า HI เท่ากับ 8.33% และค่า CI เท่ากับ 2.74% ในชุมชนยังมีแหล่งเพาะพันธุ์น้ำขังที่เอื้อต่อการแพร่พันธุ์ของยุงลายพาหะ`;
+        document.getElementById('memoActions').value = `1. ดำเนินการพ่นสารเคมีกำจัดยุงตัวแก่ในบ้านผู้ป่วยและรัศมี 100 เมตร\n2. ร่วมกับ อสม. สำรวจและทำลายแหล่งเพาะพันธุ์ลูกน้ำยุงลาย แจกทรายอะเบท`;
+        document.getElementById('memoTrend').value = `คาดว่ามีแหล่งแพร่โรคจากยุงลายพาหะในชุมชน หากไม่เร่งควบคุมค่าดัชนีลูกน้ำยุงลาย อาจเกิดการระบาดเป็นกลุ่มก้อนในหมู่บ้านได้`;
+        document.getElementById('memoRecommendations').value = `1. ขอรับการสนับสนุนสารเคมีและวัสดุอุปกรณ์ในการควบคุมโรค\n2. มอบหมาย อสม. เฝ้าระวังผู้ป่วยรายใหม่เชิงรุก (Active Case Finding) ในหมู่บ้านต่อเนื่องอย่างน้อย 28 วัน`;
+      } else if (c.syndrome.includes("RSV")) {
+        document.getElementById('memoLabResult').value = `แพทย์โรงพยาบาลยโสธรวินิจฉัยเป็น RSV pneumonia`;
+        document.getElementById('memoEnvResult').value = `สภาพแวดล้อมที่พักอาศัยอากาศถ่ายเทปานกลาง มีเด็กเล็กในละแวกใกล้เคียง`;
+        document.getElementById('memoActions').value = `1. ให้คำแนะนำผู้ปกครองในการดูแลแยกห้องและสังเกตอาการหายใจหอบเหนื่อย\n2. ประสานศูนย์พัฒนาเด็กเล็กเพื่อคัดกรองเด็กมีอาการไข้หวัด`;
+        document.getElementById('memoTrend').value = `เป็นโรคติดต่อทางเดินหายใจที่แพร่ระบาดได้ง่ายในกลุ่มเด็กเล็ก หากมีผู้สัมผัสร่วมบ้านที่มีอาการควรได้รับการตรวจคัดกรองทันที`;
+        document.getElementById('memoRecommendations').value = `ประชาสัมพันธ์มาตรการป้องกันโรคทางเดินหายใจในเด็กเล็ก และเฝ้าระวังคลัสเตอร์ในศูนย์พัฒนาเด็กเล็ก`;
+      } else {
+        document.getElementById('memoLabResult').value = `อยู่ระหว่างรอผลตรวจยืนยันทางห้องปฏิบัติการ`;
+        document.getElementById('memoEnvResult').value = `สำรวจสุขาภิบาลสิ่งแวดล้อมรอบบ้านผู้ป่วย`;
+        document.getElementById('memoActions').value = `1. ให้การรักษาเบื้องต้นและสุขศึกษาในการดูแลตนเอง\n2. มอบหมาย อสม. ติดตามอาการต่อเนื่อง`;
+        document.getElementById('memoTrend').value = `ยังไม่พบการระบาดเป็นกลุ่มก้อน`;
+        document.getElementById('memoRecommendations').value = `เฝ้าระวังผู้ป่วยรายใหม่ในชุมชนอย่างใกล้ชิด`;
+      }
+
+      Swal.fire({ icon: 'info', title: 'สร้างร่างรายงานสำเร็จ!', text: 'ระบบดึงข้อมูลผู้ป่วยมาร้อยเรียงให้แล้ว สามารถแก้ไขข้อความเพิ่มเติมได้เลยค่ะ', timer: 2000 });
+    }
+
+    function openInvestModal(caseObj) {
+      currentCaseObj = caseObj;
+      var villageName = VILLAGE_NAMES[caseObj.village] || "บ้านดู่ทุ่ง";
+      document.getElementById('invCaseId').value = caseObj.id;
+      document.getElementById('invPatientInfo').innerText = `${caseObj.name} (${caseObj.id}) - หมู่ ${caseObj.village} ${villageName} [${caseObj.syndrome}]`;
+      autoGenerateMemoDraft();
+      new bootstrap.Modal(document.getElementById('investModal')).show();
+    }
+
+    function submitInvestigation(e) {
+      e.preventDefault();
+      var btn = document.getElementById('btnSaveInvest');
+      btn.innerText = "⏳ กำลังบันทึก...";
+      btn.disabled = true;
+
+      var formData = new FormData(document.getElementById('investForm'));
+      var dataObj = Object.fromEntries(formData.entries());
+
+      google.script.run
+        .withSuccessHandler(function(res) {
+          btn.innerText = "💾 บันทึกรายงานเสนอผู้บริหาร";
+          btn.disabled = false;
+          if (res.status === "success") {
+            Swal.fire('สำเร็จ', res.message, 'success');
+            bootstrap.Modal.getInstance(document.getElementById('investModal')).hide();
+            loadData();
+          } else {
+            Swal.fire('ข้อผิดพลาด', res.message, 'error');
+          }
+        })
+        .saveInvestigation(dataObj);
+    }
+
+    function printOfficialMemo() {
+      if(!currentCaseObj) return;
+      var c = currentCaseObj;
+
+      document.getElementById('pDocNo').innerText = document.getElementById('memoDocNo').value;
+      
+      var invDate = new Date(document.getElementById('invDate').value);
+      var thaiMonths = ["มกราคม","กุมภาพันธ์","มีนาคม","เมษายน","พฤษภาคม","มิถุนายน","กรกฎาคม","สิงหาคม","กันยายน","ตุลาคม","พฤศจิกายน","ธันวาคม"];
+      var thaiDateStr = `${invDate.getDate()} ${thaiMonths[invDate.getMonth()]} ${invDate.getFullYear() + 543}`;
+      document.getElementById('pDate').innerText = thaiDateStr;
+
+      document.getElementById('pDiseaseTitle').innerText = c.syndrome;
+      document.getElementById('pBackground').innerText = document.getElementById('memoBackground').value;
+      document.getElementById('pInvestResult').innerText = document.getElementById('memoInvestResult').value;
+      document.getElementById('pLabEnv').innerText = document.getElementById('memoLabResult').value + " " + document.getElementById('memoEnvResult').value;
+      document.getElementById('pActions').innerText = document.getElementById('memoActions').value;
+      document.getElementById('pTrend').innerText = document.getElementById('memoTrend').value;
+      document.getElementById('pRecommendations').innerText = document.getElementById('memoRecommendations').value;
+
+      document.getElementById('pInvestigatorName').innerText = document.getElementById('memoInvestigator').value;
+      document.getElementById('pDirectorName').innerText = document.getElementById('memoDirector').value;
+
+      document.getElementById('memoPrintArea').classList.remove('d-none');
+      window.print();
+      document.getElementById('memoPrintArea').classList.add('d-none');
+    }
+
+    function openEditModal(caseObj) {
+      document.getElementById('editCaseId').value = caseObj.id;
+      document.getElementById('editCaseIdText').innerText = caseObj.id;
+      document.getElementById('editVillage').value = caseObj.village;
+      document.getElementById('editName').value = caseObj.name;
+      document.getElementById('editHouse').value = caseObj.house === '-' ? '' : caseObj.house;
+      document.getElementById('editAge').value = caseObj.age;
+      document.getElementById('editGender').value = caseObj.gender;
+      document.getElementById('editSyndrome').value = caseObj.syndrome;
+      document.getElementById('editTemp').value = caseObj.temp;
+      document.getElementById('editSymptoms').value = caseObj.symptoms === '-' ? '' : caseObj.symptoms;
+
+      var parts = caseObj.onset.split('/');
+      if (parts.length === 3) {
+        document.getElementById('editOnset').value = `${parts[2]}-${parts[1]}-${parts[0]}`;
+      }
+      new bootstrap.Modal(document.getElementById('editModal')).show();
+    }
+
+    function submitEditForm(e) {
+      e.preventDefault();
+      var btn = document.getElementById('btnUpdate');
+      btn.innerText = "⏳ กำลังบันทึก...";
+      btn.disabled = true;
+
+      var formData = new FormData(document.getElementById('editForm'));
+      var editObj = Object.fromEntries(formData.entries());
+
+      google.script.run
+        .withSuccessHandler(function(res) {
+          btn.innerText = "💾 บันทึกการแก้ไข";
+          btn.disabled = false;
+          if (res.status === "success") {
+            Swal.fire('สำเร็จ', res.message, 'success');
+            bootstrap.Modal.getInstance(document.getElementById('editModal')).hide();
+            loadData();
+          } else {
+            Swal.fire('ผิดพลาด', res.message, 'error');
+          }
+        })
+        .updatePatientCase(editObj);
+    }
+
+    function confirmDeleteCase(caseId, patientName) {
+      Swal.fire({
+        title: 'ยืนยันการลบข้อมูล?',
+        text: `คุณต้องการลบเคส ${caseId} (${patientName}) ใช่หรือไม่?`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#d33',
+        confirmButtonText: 'ใช่, ลบเลย!',
+        cancelButtonText: 'ยกเลิก'
+      }).then((result) => {
+        if (result.isConfirmed) {
+          google.script.run.withSuccessHandler(function(res) {
+            Swal.fire('ลบสำเร็จ!', res.message, 'success');
+            loadData();
+          }).deletePatientCase(caseId);
+        }
+      });
+    }
+
+    loadData();
+  </script>
+</body>
+</html>
